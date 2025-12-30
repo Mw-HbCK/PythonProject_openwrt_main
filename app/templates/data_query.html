@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据查询 - Bandix Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .controls {
+            padding: 30px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            gap: 20px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .control-group select,
+        .control-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .control-group select:focus,
+        .control-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card .label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+        
+        thead {
+            background: #f8f9fa;
+        }
+        
+        th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 30px;
+            padding: 20px;
+        }
+        
+        .pagination button {
+            padding: 10px 20px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .pagination button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination .page-info {
+            padding: 10px 20px;
+            color: #666;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 数据查询</h1>
+            <p>选择数据库和表进行查询</p>
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>选择表</label>
+                <select id="tableSelect">
+                    <option value="">-- 请选择表 --</option>
+                    <option value="total_traffic">全网流量 (total_traffic)</option>
+                    <option value="device_traffic">设备流量 (device_traffic)</option>
+                    <option value="devices">设备信息 (devices)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>设备 (仅设备流量表)</label>
+                <select id="deviceSelect" disabled>
+                    <option value="">-- 加载中 --</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <button class="btn" onclick="loadData()">🔍 查询</button>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div id="statsContainer" class="stats" style="display: none;"></div>
+            
+            <div id="loading" class="loading" style="display: none;">
+                加载中...
+            </div>
+            
+            <div id="error" class="error" style="display: none;"></div>
+            
+            <div id="tableContainer" class="table-container" style="display: none;">
+                <table id="dataTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            
+            <div id="empty" class="empty" style="display: none;">
+                暂无数据
+            </div>
+            
+            <div id="pagination" class="pagination" style="display: none;"></div>
+        </div>
+    </div>
+    
+    <script>
+        let currentPage = 1;
+        let currentTable = '';
+        let currentDeviceId = '';
+        
+        // 表选择变化时
+        document.getElementById('tableSelect').addEventListener('change', function() {
+            const table = this.value;
+            currentTable = table;
+            currentPage = 1;
+            currentDeviceId = '';
+            
+            const deviceSelect = document.getElementById('deviceSelect');
+            
+            if (table === 'device_traffic') {
+                deviceSelect.disabled = false;
+                loadDevices();
+            } else {
+                deviceSelect.disabled = true;
+                deviceSelect.innerHTML = '<option value="">-- 不适用 --</option>';
+            }
+            
+            // 清空显示
+            document.getElementById('tableContainer').style.display = 'none';
+            document.getElementById('statsContainer').style.display = 'none';
+            document.getElementById('pagination').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('empty').style.display = 'none';
+        });
+        
+        // 加载设备列表
+        async function loadDevices() {
+            try {
+                const response = await fetch('/api/database/devices');
+                const result = await response.json();
+                
+                const deviceSelect = document.getElementById('deviceSelect');
+                deviceSelect.innerHTML = '<option value="">-- 全部设备 --</option>';
+                
+                if (result.success && result.data) {
+                    result.data.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.id;
+                        option.textContent = `${device.hostname || '未知'} (${device.mac})`;
+                        deviceSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('加载设备列表失败:', error);
+            }
+        }
+        
+        // 加载数据
+        async function loadData() {
+            const table = document.getElementById('tableSelect').value;
+            if (!table) {
+                alert('请先选择表');
+                return;
+            }
+            
+            const deviceSelect = document.getElementById('deviceSelect');
+            const deviceId = deviceSelect.value;
+            
+            currentTable = table;
+            currentDeviceId = deviceId;
+            currentPage = 1;
+            
+            await fetchData();
+        }
+        
+        // 获取数据
+        async function fetchData() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const tableContainer = document.getElementById('tableContainer');
+            const statsContainer = document.getElementById('statsContainer');
+            const pagination = document.getElementById('pagination');
+            const empty = document.getElementById('empty');
+            
+            // 显示加载
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            tableContainer.style.display = 'none';
+            statsContainer.style.display = 'none';
+            pagination.style.display = 'none';
+            empty.style.display = 'none';
+            
+            try {
+                let url = '';
+                
+                if (currentTable === 'total_traffic') {
+                    url = `/api/database/total-traffic?page=${currentPage}&per_page=100`;
+                } else if (currentTable === 'device_traffic') {
+                    if (!currentDeviceId) {
+                        throw new Error('请选择设备');
+                    }
+                    url = `/api/database/device-traffic/${currentDeviceId}?page=${currentPage}&per_page=100`;
+                } else if (currentTable === 'devices') {
+                    url = `/api/database/devices`;
+                }
+                
+                const response = await fetch(url);
+                const result = await response.json();
+                
+                loading.style.display = 'none';
+                
+                if (!result.success) {
+                    throw new Error(result.error || '加载数据失败');
+                }
+                
+                // 显示统计数据
+                if (result.pagination) {
+                    showStats(result.pagination);
+                } else if (result.count !== undefined) {
+                    showStats({ total: result.count });
+                }
+                
+                // 显示表格
+                if (currentTable === 'devices') {
+                    displayDevicesTable(result.data || []);
+                } else {
+                    displayTrafficTable(result.data || []);
+                }
+                
+                // 显示分页
+                if (result.pagination) {
+                    displayPagination(result.pagination);
+                }
+                
+            } catch (err) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = '错误: ' + err.message;
+            }
+        }
+        
+        // 显示统计信息
+        function showStats(pagination) {
+            const statsContainer = document.getElementById('statsContainer');
+            statsContainer.innerHTML = `
+                <div class="stat-card">
+                    <div class="value">${pagination.total || 0}</div>
+                    <div class="label">总记录数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${pagination.page || 1}</div>
+                    <div class="label">当前页码</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${pagination.pages || 1}</div>
+                    <div class="label">总页数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${pagination.per_page || 100}</div>
+                    <div class="label">每页记录数</div>
+                </div>
+            `;
+            statsContainer.style.display = 'grid';
+        }
+        
+        // 显示设备表
+        function displayDevicesTable(data) {
+            const tableHead = document.getElementById('tableHead');
+            const tableBody = document.getElementById('tableBody');
+            const tableContainer = document.getElementById('tableContainer');
+            const empty = document.getElementById('empty');
+            
+            if (data.length === 0) {
+                empty.style.display = 'block';
+                tableContainer.style.display = 'none';
+                return;
+            }
+            
+            tableHead.innerHTML = `
+                <tr>
+                    <th>ID</th>
+                    <th>MAC地址</th>
+                    <th>主机名</th>
+                    <th>IP地址</th>
+                    <th>创建时间</th>
+                    <th>更新时间</th>
+                </tr>
+            `;
+            
+            tableBody.innerHTML = data.map(device => `
+                <tr>
+                    <td>${device.id}</td>
+                    <td>${device.mac || '-'}</td>
+                    <td>${device.hostname || '未知'}</td>
+                    <td>${device.ip || '-'}</td>
+                    <td>${device.created_at ? new Date(device.created_at).toLocaleString('zh-CN') : '-'}</td>
+                    <td>${device.updated_at ? new Date(device.updated_at).toLocaleString('zh-CN') : '-'}</td>
+                </tr>
+            `).join('');
+            
+            tableContainer.style.display = 'block';
+            empty.style.display = 'none';
+        }
+        
+        // 显示流量表
+        function displayTrafficTable(data) {
+            const tableHead = document.getElementById('tableHead');
+            const tableBody = document.getElementById('tableBody');
+            const tableContainer = document.getElementById('tableContainer');
+            const empty = document.getElementById('empty');
+            
+            if (data.length === 0) {
+                empty.style.display = 'block';
+                tableContainer.style.display = 'none';
+                return;
+            }
+            
+            tableHead.innerHTML = `
+                <tr>
+                    <th>ID</th>
+                    ${currentTable === 'device_traffic' ? '<th>设备ID</th>' : ''}
+                    <th>时间戳</th>
+                    <th>下行速率</th>
+                    <th>上行速率</th>
+                    <th>累计下载</th>
+                    <th>累计上传</th>
+                </tr>
+            `;
+            
+            tableBody.innerHTML = data.map(item => `
+                <tr>
+                    <td>${item.id}</td>
+                    ${currentTable === 'device_traffic' ? `<td>${item.device_id}</td>` : ''}
+                    <td>${item.timestamp ? new Date(item.timestamp).toLocaleString('zh-CN') : '-'}</td>
+                    <td>${item.down_speed?.formatted || item.down_speed?.bytes || '-'}</td>
+                    <td>${item.up_speed?.formatted || item.up_speed?.bytes || '-'}</td>
+                    <td>${item.total_download?.formatted || item.total_download?.bytes || '-'}</td>
+                    <td>${item.total_upload?.formatted || item.total_upload?.bytes || '-'}</td>
+                </tr>
+            `).join('');
+            
+            tableContainer.style.display = 'block';
+            empty.style.display = 'none';
+        }
+        
+        // 显示分页
+        function displayPagination(pagination) {
+            const paginationDiv = document.getElementById('pagination');
+            
+            if (!pagination || pagination.pages <= 1) {
+                paginationDiv.style.display = 'none';
+                return;
+            }
+            
+            paginationDiv.innerHTML = `
+                <button onclick="goToPage(1)" ${!pagination.has_prev ? 'disabled' : ''}>首页</button>
+                <button onclick="goToPage(${currentPage - 1})" ${!pagination.has_prev ? 'disabled' : ''}>上一页</button>
+                <span class="page-info">第 ${pagination.page} / ${pagination.pages} 页 (共 ${pagination.total} 条)</span>
+                <button onclick="goToPage(${currentPage + 1})" ${!pagination.has_next ? 'disabled' : ''}>下一页</button>
+                <button onclick="goToPage(${pagination.pages})" ${!pagination.has_next ? 'disabled' : ''}>末页</button>
+            `;
+            
+            paginationDiv.style.display = 'flex';
+        }
+        
+        // 跳转页面
+        function goToPage(page) {
+            currentPage = page;
+            fetchData();
+        }
+        
+        // 初始化：加载设备列表（如果选择了设备流量表）
+        window.addEventListener('load', function() {
+            // 如果URL中有参数，可以自动选择
+            const params = new URLSearchParams(window.location.search);
+            const table = params.get('table');
+            if (table) {
+                document.getElementById('tableSelect').value = table;
+                document.getElementById('tableSelect').dispatchEvent(new Event('change'));
+            }
+        });
+    </script>
+</body>
+</html>
