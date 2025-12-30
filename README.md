@@ -133,9 +133,7 @@ bandix-monitor/
 │   ├── users.db                # 用户和 Token 数据库
 │   └── traffic_data.db         # 流量历史数据数据库
 │
-├── docs/                        # 文档目录
-│   ├── API_README.md           # API 使用文档
-│   └── USER_GUIDE.md           # 用户指南
+├── deprecated/                  # 废弃文件目录（历史参考）
 │
 ├── requirements.txt             # Python 依赖包
 ├── run.py                      # 启动脚本
