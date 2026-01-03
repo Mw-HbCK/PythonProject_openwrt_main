@@ -1,0 +1,75 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+dist
+build
+*.egg
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# 日志文件
+logs/*
+*.log
+!logs/.gitkeep
+
+# 数据库文件（使用外部数据库或卷）
+instance/*.db
+instance/*.sqlite
+instance/*.sqlite3
+
+# 备份和报表（使用卷挂载）
+backups/*
+reports/*
+!backups/.gitkeep
+!reports/.gitkeep
+
+# 部署相关
+deploy/
+build/
+*.sh
+!docker-entrypoint.sh
+
+# 文档
+*.md
+!README.md
+docs/
+deprecated/
+
+# 配置文件备份
+app/config/*.backup.*
+app/config/*.bak
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 其他
+Untitled
+*.backup
+
