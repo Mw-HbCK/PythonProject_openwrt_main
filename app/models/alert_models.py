@@ -26,7 +26,7 @@ class AlertRule(db.Model):
     
     # 流量阈值告警相关字段
     threshold_bytes = db.Column(db.BigInteger, nullable=True)  # 流量阈值（字节）
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id', ondelete='CASCADE'), nullable=True, index=True)  # 设备ID（可选，NULL表示所有设备）
+    device_id = db.Column(db.Integer, nullable=True, index=True)  # 设备ID（可选，NULL表示所有设备），移除外键约束以兼容MySQL权限限制
     
     # 设备离线告警相关字段
     offline_threshold_minutes = db.Column(db.Integer, nullable=True)  # 离线阈值（分钟）
@@ -40,8 +40,9 @@ class AlertRule(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
-    # 关联关系
-    alert_history = db.relationship('AlertHistory', backref='rule', lazy='dynamic', cascade='all, delete-orphan')
+    # 关联关系（移除外键约束后，关系定义暂时移除以避免SQLAlchemy配置错误）
+    # 应用代码可以通过rule_id直接查询
+    # alert_history = db.relationship('AlertHistory', backref='rule', lazy='dynamic')
     
     def __repr__(self):
         return f'<AlertRule {self.id} - {self.name}>'
@@ -78,7 +79,7 @@ class AlertHistory(db.Model):
     __bind_key__ = 'traffic'  # 指定使用traffic数据库
     
     id = db.Column(db.Integer, primary_key=True)
-    rule_id = db.Column(db.Integer, db.ForeignKey('alert_rules.id', ondelete='CASCADE'), nullable=False, index=True)
+    rule_id = db.Column(db.Integer, nullable=False, index=True)  # 移除外键约束以兼容MySQL权限限制
     alert_type = db.Column(db.String(50), nullable=False, index=True)  # 'traffic_threshold' or 'device_offline'
     message = db.Column(db.Text, nullable=False)
     severity = db.Column(db.String(20), nullable=False, index=True)  # 'critical', 'warning', 'info'
@@ -87,7 +88,7 @@ class AlertHistory(db.Model):
     resolved_at = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), nullable=False, default='triggered', index=True)  # 'triggered', 'resolved', 'acknowledged'
     
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id', ondelete='SET NULL'), nullable=True, index=True)
+    device_id = db.Column(db.Integer, nullable=True, index=True)  # 移除外键约束以兼容MySQL权限限制
     
     # 创建索引以提高查询性能
     __table_args__ = (
@@ -109,6 +110,6 @@ class AlertHistory(db.Model):
             'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
             'status': self.status,
             'device_id': self.device_id,
-            'rule': self.rule.to_dict() if self.rule else None
+            # 'rule': self.rule.to_dict() if self.rule else None  # 关系定义已移除，需要通过rule_id查询
         }
 

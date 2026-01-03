@@ -1,0 +1,62 @@
+[bandix]
+# OpenWrt 设备的 ubus URL
+url = http://10.0.0.1/ubus
+
+# 登录用户名
+username = root
+
+# 登录密码
+password = @HanBo123
+
+[api]
+# API 服务监听地址
+host = 0.0.0.0
+
+# API 服务端口
+port = 5000
+
+# 是否启用调试模式
+debug = false
+
+# API 鉴权配置
+# 是否启用 API 密钥鉴权（true/false）
+auth_enabled = true
+
+# API 密钥（用于访问 API 接口，可以通过 Header X-API-Key 或查询参数 api_key 传递）
+api_key = hanbo123
+
+# 健康检查端点是否也需要鉴权（true/false）
+health_check_require_auth = false
+
+[collector]
+# 数据收集间隔（秒）
+collect_interval = 1.0
+
+[notifications]
+# 邮件通知配置
+email_enabled = false
+email_smtp_host = smtp.example.com
+email_smtp_port = 587
+email_use_tls = true
+email_username = your-email@example.com
+email_password = your-password
+email_from = alerts@example.com
+email_to = admin@example.com
+
+# Webhook 通知配置
+webhook_enabled = false
+webhook_urls = https://example.com/webhook1;https://example.com/webhook2
+webhook_headers = {"Authorization": "Bearer token"}
+
+# Telegram 通知配置
+telegram_enabled = false
+telegram_bot_token = your-bot-token
+telegram_chat_ids = 123456789;987654321
+
+# 企业微信通知配置
+wecom_enabled = false
+wecom_webhook_urls = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+
+# 钉钉通知配置
+dingtalk_enabled = false
+dingtalk_webhook_urls = https://oapi.dingtalk.com/robot/send?access_token=xxx

@@ -1,0 +1,95 @@
+[bandix]
+url = http://10.0.0.1/ubus
+username = root
+password = @HanBo123
+
+[api]
+host = 0.0.0.0
+port = 5000
+debug = false
+auth_enabled = true
+api_key = hanbo123
+health_check_require_auth = false
+
+[collector]
+collect_interval = 1
+
+[notifications]
+email_enabled = true
+email_smtp_host = smtp.qq.com
+email_smtp_port = 465
+email_use_tls = true
+email_username = 2889264408@qq.com
+email_password = kpmkkqnzovxndfef
+email_from = 2889264408@qq.com
+email_to = ishan.bo@outlook.com
+webhook_enabled = false
+webhook_urls = https://example.com/webhook1;https://example.com/webhook2
+webhook_headers = {"Authorization": "Bearer token"}
+telegram_enabled = false
+telegram_bot_token = your-bot-token
+telegram_chat_ids = 123456789;987654321
+wecom_enabled = true
+wecom_webhook_urls = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d2e70282-8bd1-4e72-8872-c6ba45aa5902
+dingtalk_enabled = false
+dingtalk_webhook_urls = https://oapi.dingtalk.com/robot/send?access_token=xxx
+
+[backup]
+backup_enabled = true
+frequency = daily
+backup_time = 02:00
+backup_dir = ./backups
+databases = users,traffic  # 要备份的数据库，用逗号分隔
+keep_count = 30  # 保留最近N个备份
+compress = false
+cloud_enabled = false
+cloud_type = s3
+cloud_bucket = your-bucket-name
+cloud_region = us-east-1  # AWS S3 区域
+cloud_access_key = your-access-key
+cloud_secret_key = your-secret-key
+cloud_endpoint = oss-cn-hangzhou.aliyuncs.com
+
+[report]
+report_enabled = true
+daily_enabled = true
+daily_time = 02:00
+weekly_enabled = true
+weekly_time = 02:00
+weekly_day = monday
+monthly_enabled = true
+monthly_time = 02:00
+monthly_day = 1
+report_dir = ./reports
+keep_count = 30  # 保留最近N个报表
+generate_pdf = true
+generate_html = true
+generate_excel = true
+pdf_library = reportlab
+email_enabled = true
+email_recipients = ishan.bo@outlook.com
+
+[logging]
+log_level = INFO
+log_format = both
+log_dir = ./logs
+log_max_bytes = 10
+log_backup_count = 30
+log_rotation = both
+log_to_console = true
+log_to_file = true
+log_categories = all
+
+[database]
+# 数据库类型：sqlite 或 mysql
+type = sqlite
+# MySQL配置（当type=mysql时使用）
+mysql_host = localhost
+mysql_port = 3306
+mysql_user = root
+mysql_password = 
+mysql_database = bandix_monitor
+mysql_charset = utf8mb4
+# 流量数据库名称（如果与主数据库不同，可为空则使用mysql_database）
+mysql_traffic_database = 
+

@@ -25,8 +25,9 @@ class Device(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # 关联关系
-    traffic_records = db.relationship('DeviceTraffic', backref='device', lazy='dynamic', cascade='all, delete-orphan')
+    # 关联关系（移除外键约束后，关系定义暂时移除以避免SQLAlchemy配置错误）
+    # 应用代码可以通过device_id直接查询
+    # traffic_records = db.relationship('DeviceTraffic', backref='device', lazy='dynamic')
     
     def __repr__(self):
         return f'<Device {self.mac} - {self.hostname}>'
@@ -105,7 +106,7 @@ class DeviceTraffic(db.Model):
     __bind_key__ = 'traffic'  # 指定使用traffic数据库
     
     id = db.Column(db.Integer, primary_key=True)
-    device_id = db.Column(db.Integer, db.ForeignKey('devices.id', ondelete='CASCADE'), nullable=False, index=True)
+    device_id = db.Column(db.Integer, nullable=False, index=True)  # 移除外键约束以兼容MySQL权限限制
     timestamp = db.Column(db.DateTime, nullable=False, index=True, default=datetime.utcnow)
     timestamp_ms = db.Column(db.BigInteger, nullable=True, index=True)  # 原始时间戳（毫秒）
     

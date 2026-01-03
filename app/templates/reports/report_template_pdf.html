@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>流量监控报表</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', 'SimHei', Arial, sans-serif;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .report-header {
+            text-align: center;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .report-title {
+            font-size: 28px;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .report-period {
+            font-size: 16px;
+            color: #7f8c8d;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            color: #34495e;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        
+        th {
+            background-color: #3498db;
+            color: white;
+            font-weight: bold;
+        }
+        
+        tbody tr:nth-child(even) {
+            background-color: #f5f5f5;
+        }
+        
+        .chart-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .chart-container img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .summary-grid {
+            display: table;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        .summary-item {
+            display: table-cell;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid #ddd;
+        }
+        
+        .summary-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+        
+        .summary-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+            color: #7f8c8d;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="report-header">
+        <h1 class="report-title">
+            {% if report_type == 'daily' %}日报
+            {% elif report_type == 'weekly' %}周报
+            {% elif report_type == 'monthly' %}月报
+            {% else %}报表{% endif %}
+        </h1>
+        <div class="report-period">
+            {{ period_start.strftime('%Y年%m月%d日') }} - {{ period_end.strftime('%Y年%m月%d日') }}
+        </div>
+    </div>
+    
+    <!-- 流量统计摘要 -->
+    <div class="section">
+        <h2 class="section-title">流量统计摘要</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>指标</th>
+                    <th>数值</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>总下载流量</td>
+                    <td>{{ report_data.traffic_summary.total_download_formatted }}</td>
+                </tr>
+                <tr>
+                    <td>总上传流量</td>
+                    <td>{{ report_data.traffic_summary.total_upload_formatted }}</td>
+                </tr>
+                <tr>
+                    <td>总流量</td>
+                    <td>{{ report_data.traffic_summary.total_traffic_formatted }}</td>
+                </tr>
+                <tr>
+                    <td>平均下行速率</td>
+                    <td>{{ report_data.traffic_summary.avg_down_speed_formatted }}</td>
+                </tr>
+                <tr>
+                    <td>平均上行速率</td>
+                    <td>{{ report_data.traffic_summary.avg_up_speed_formatted }}</td>
+                </tr>
+                <tr>
+                    <td>峰值下行速率</td>
+                    <td>{{ report_data.peak_speed.peak_down_speed_formatted }}</td>
+                </tr>
+                <tr>
+                    <td>峰值上行速率</td>
+                    <td>{{ report_data.peak_speed.peak_up_speed_formatted }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- 流量趋势图 -->
+    {% if chart_base64.traffic_trend %}
+    <div class="section">
+        <h2 class="section-title">流量趋势图</h2>
+        <div class="chart-container">
+            <img src="{{ chart_base64.traffic_trend }}" alt="流量趋势图">
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- 设备排名 -->
+    <div class="section">
+        <h2 class="section-title">设备流量排名 Top 10</h2>
+        {% if report_data.device_ranking %}
+        <table>
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>设备名称</th>
+                    <th>MAC地址</th>
+                    <th>总流量</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for device in report_data.device_ranking %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ device.device_name }}</td>
+                    <td>{{ device.mac }}</td>
+                    <td>{{ device.total_traffic_formatted }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>暂无设备数据</p>
+        {% endif %}
+    </div>
+    
+    <!-- 设备排名图 -->
+    {% if chart_base64.device_ranking %}
+    <div class="section">
+        <h2 class="section-title">设备排名图</h2>
+        <div class="chart-container">
+            <img src="{{ chart_base64.device_ranking }}" alt="设备排名图">
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- 告警事件统计 -->
+    <div class="section">
+        <h2 class="section-title">告警事件统计</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>指标</th>
+                    <th>数值</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>总告警数</td>
+                    <td>{{ report_data.alert_stats.total_count }}</td>
+                </tr>
+                <tr>
+                    <td>严重告警</td>
+                    <td>{{ report_data.alert_stats.by_severity.critical }}</td>
+                </tr>
+                <tr>
+                    <td>警告</td>
+                    <td>{{ report_data.alert_stats.by_severity.warning }}</td>
+                </tr>
+                <tr>
+                    <td>信息</td>
+                    <td>{{ report_data.alert_stats.by_severity.info }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="footer">
+        <p>报表生成时间: {{ period_end.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        <p>OpenWrt Bandix 流量监控系统</p>
+    </div>
+</body>
+</html>
+

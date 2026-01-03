@@ -1,0 +1,57 @@
+[bandix]
+url = http://10.0.0.1/ubus
+username = root
+password = @HanBo123
+
+[api]
+host = 0.0.0.0
+port = 5000
+debug = false
+auth_enabled = true
+api_key = hanbo123
+health_check_require_auth = false
+
+[collector]
+collect_interval = 1
+
+[notifications]
+email_enabled = false
+email_smtp_host = smtp.example.com
+email_smtp_port = 587
+email_use_tls = true
+email_username = your-email@example.com
+email_password = your-password
+email_from = alerts@example.com
+email_to = admin@example.com
+webhook_enabled = false
+webhook_urls = https://example.com/webhook1;https://example.com/webhook2
+webhook_headers = {"Authorization": "Bearer token"}
+telegram_enabled = false
+telegram_bot_token = your-bot-token
+telegram_chat_ids = 123456789;987654321
+wecom_enabled = true
+wecom_webhook_urls = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d2e70282-8bd1-4e72-8872-c6ba45aa5902
+dingtalk_enabled = false
+dingtalk_webhook_urls = https://oapi.dingtalk.com/robot/send?access_token=xxx
+
+[backup]
+# 定时备份配置
+backup_enabled = false
+frequency = daily  # daily/weekly/monthly
+backup_time = 02:00
+backup_dir = ./backups
+databases = users,traffic  # 要备份的数据库，用逗号分隔
+keep_count = 30  # 保留最近N个备份
+compress = true  # 是否压缩备份文件
+
+# 云存储配置（可选）
+cloud_enabled = false
+cloud_type = s3  # s3/oss
+cloud_bucket = your-bucket-name
+cloud_region = us-east-1  # AWS S3 区域
+# AWS S3 配置
+cloud_access_key = your-access-key
+cloud_secret_key = your-secret-key
+# 阿里云 OSS 配置（使用OSS时设置）
+cloud_endpoint = oss-cn-hangzhou.aliyuncs.com
+

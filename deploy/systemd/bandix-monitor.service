@@ -1,0 +1,56 @@
+[Unit]
+Description=Bandix Monitor Service
+Documentation=https://github.com/your-repo/bandix-monitor
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=notify
+User={{APP_USER}}
+Group={{APP_USER}}
+WorkingDirectory={{APP_DIR}}
+Environment="PATH={{APP_DIR}}/venv/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH={{APP_DIR}}"
+
+# Gunicorn 配置
+ExecStart={{APP_DIR}}/venv/bin/gunicorn \
+    --workers 4 \
+    --worker-class sync \
+    --worker-connections 1000 \
+    --bind 127.0.0.1:5000 \
+    --timeout 120 \
+    --keep-alive 5 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --access-logfile {{APP_DIR}}/logs/gunicorn_access.log \
+    --error-logfile {{APP_DIR}}/logs/gunicorn_error.log \
+    --log-level info \
+    --capture-output \
+    --enable-stdio-inheritance \
+    --preload \
+    app.bandix_api:app
+
+# 重载配置
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# 重启策略
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# 资源限制
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{APP_DIR}}/logs {{APP_DIR}}/backups {{APP_DIR}}/reports {{APP_DIR}}/instance
+
+[Install]
+WantedBy=multi-user.target
+

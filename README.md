@@ -44,6 +44,15 @@
   - 数据清理（按时间删除旧数据）
   - 数据库优化（VACUUM）
   - 数据备份（SQL 备份文件导出）
+  
+- **💾 定时数据备份**
+  - 自动定时备份（每日/每周/每月）
+  - 多数据库备份（用户数据库、流量数据库）
+  - 备份文件压缩（ZIP格式）
+  - 备份历史记录管理
+  - 备份文件下载和恢复
+  - 云存储支持（AWS S3、阿里云OSS，可选）
+  - 自动清理旧备份
 
 - **👥 用户管理**
   - 用户注册/登录
@@ -242,7 +251,15 @@ flask run --host=0.0.0.0 --port=5000
 数据查询: http://0.0.0.0:5000/data
 启动数据收集服务（每1秒收集一次）...
 数据收集服务已启动
+启动通知任务队列...
+通知任务队列已启动
+启动备份调度器...
+备份调度器已启动
 ```
+
+**注意**：
+- 通知功能使用内置的线程队列处理，无需额外启动独立服务
+- 备份调度器会在启动时检查配置，如果备份未启用则不会启动
 
 ### 5. 访问应用
 
@@ -421,8 +438,19 @@ API 支持两种认证方式：
 
 - `POST /api/database/management/cleanup` - 数据清理
 - `POST /api/database/management/vacuum` - 数据库优化
-- `GET /api/database/management/backup` - 导出数据库备份
+- `GET /api/database/management/backup` - 导出数据库备份（手动备份）
 - `GET /api/database/management/backup-info` - 获取备份信息
+
+#### 备份管理 API（定时备份）
+
+- `GET /api/backup/history` - 获取备份历史记录列表
+- `GET /api/backup/download/<backup_id>` - 下载备份文件
+- `POST /api/backup/manual` - 手动触发备份（管理员）
+- `POST /api/backup/restore/<backup_id>` - 恢复备份（管理员，危险操作）
+- `DELETE /api/backup/<backup_id>` - 删除备份文件（管理员）
+- `GET /api/backup/config` - 获取备份配置
+- `PUT /api/backup/config` - 更新备份配置（管理员）
+- `POST /api/backup/config/test` - 测试备份配置（管理员，测试云存储连接等）
 - `GET /api/database/management/stats` - 获取数据库统计
 
 #### 配置管理（管理员）
@@ -430,6 +458,9 @@ API 支持两种认证方式：
 - `GET /api/config` - 获取配置信息
 - `PUT /api/config` - 更新配置
 - `GET /api/config/collector` - 获取数据收集器配置和状态
+- `GET /api/config/notifications` - 获取通知配置
+- `PUT /api/config/notifications` - 更新通知配置
+- `POST /api/config/notifications/test` - 测试通知配置
 
 ### 完整 API 文档
 
@@ -441,7 +472,7 @@ http://localhost:5000/api/docs
 
 ### 配置文件结构
 
-`app/config/bandix_config.ini` 包含三个主要配置段：
+`app/config/bandix_config.ini` 包含四个主要配置段：
 
 #### [bandix] - OpenWrt 设备配置
 
@@ -467,6 +498,71 @@ health_check_require_auth = false  # 健康检查端点是否需要认证
 ```ini
 collect_interval = 1.0           # 数据收集间隔（秒）
 ```
+
+#### [notifications] - 通知配置
+
+```ini
+# 邮件通知配置
+email_enabled = false            # 是否启用邮件通知
+email_smtp_host = smtp.example.com  # SMTP服务器地址
+email_smtp_port = 587            # SMTP端口
+email_use_tls = true             # 是否使用TLS/SSL
+email_username = your-email@example.com  # 邮箱用户名
+email_password = your-password   # 邮箱密码
+email_from = alerts@example.com  # 发件人地址
+email_to = admin@example.com     # 收件人地址（多个用逗号或分号分隔）
+
+# Webhook 通知配置
+webhook_enabled = false          # 是否启用Webhook通知
+webhook_urls = https://example.com/webhook  # Webhook URL（多个用分号分隔）
+webhook_headers = {"Authorization": "Bearer token"}  # 请求头（JSON格式）
+
+# Telegram 通知配置
+telegram_enabled = false         # 是否启用Telegram通知
+telegram_bot_token = your-bot-token  # Telegram Bot Token
+telegram_chat_ids = 123456789;987654321  # Chat ID（多个用分号分隔）
+
+# 企业微信通知配置
+wecom_enabled = false            # 是否启用企业微信通知
+wecom_webhook_urls = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx  # Webhook URL（多个用分号分隔）
+
+# 钉钉通知配置
+dingtalk_enabled = false         # 是否启用钉钉通知
+dingtalk_webhook_urls = https://oapi.dingtalk.com/robot/send?access_token=xxx  # Webhook URL（多个用分号分隔）
+
+[backup]
+# 定时备份配置
+backup_enabled = false           # 是否启用定时备份
+frequency = daily                # 备份频率：daily/weekly/monthly
+backup_time = 02:00              # 备份时间（HH:MM格式，24小时制）
+backup_dir = ./backups           # 备份文件存储目录
+databases = users,traffic        # 要备份的数据库（用逗号分隔）
+keep_count = 30                  # 保留最近N个备份文件
+compress = true                  # 是否压缩备份文件（ZIP格式）
+
+# 云存储配置（可选）
+cloud_enabled = false            # 是否启用云存储上传
+cloud_type = s3                  # 云存储类型：s3（AWS S3）或oss（阿里云OSS）
+cloud_bucket = your-bucket-name  # 存储桶名称
+cloud_region = us-east-1         # AWS S3 区域（使用S3时必填）
+cloud_access_key = your-key      # 访问密钥
+cloud_secret_key = your-secret   # 秘密密钥
+cloud_endpoint = oss-cn-hangzhou.aliyuncs.com  # OSS端点（使用OSS时必填）
+```
+
+**Webhook URL 获取方法**：
+
+- **企业微信**：
+  1. 在企业微信群聊中，点击右上角"..." → "群机器人"
+  2. 选择"添加机器人" → "自定义"
+  3. 设置机器人名称和头像
+  4. 复制生成的 Webhook URL
+
+- **钉钉**：
+  1. 在钉钉群聊中，点击"群设置" → "智能群助手" → "添加机器人"
+  2. 选择"自定义"机器人
+  3. 设置机器人名称，选择安全设置（建议选择"加签"）
+  4. 复制生成的 Webhook URL（包含 access_token 参数）
 
 ### 环境变量
 

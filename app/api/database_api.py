@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from sqlalchemy import desc, and_, func, text
 import os
 import sys
-import sqlite3
 import io
 
 # 添加项目根目录到路径
@@ -20,6 +19,7 @@ if project_root not in sys.path:
 from app.models.database_models import db, Device, TotalTraffic, DeviceTraffic
 from app.api.user_api import login_required, admin_required
 from app.models.user_models import User
+from app.services.database_config_service import get_database_config
 
 db_bp = Blueprint('database', __name__, url_prefix='/api/database')
 
@@ -1199,78 +1199,6 @@ def calculate_period_comparison(period='day'):
 
 # ============ 数据管理功能 ============
 
-def get_database_file_path():
-    """
-    获取流量数据库文件路径
-    Flask默认将sqlite:///xxx.db放在instance文件夹中
-    """
-    try:
-        # 方法1: 从SQLAlchemy引擎获取实际路径（最可靠）
-        if has_app_context() and hasattr(current_app, 'config'):
-            bind_key = 'traffic'
-            try:
-                engine = db.get_engine(current_app, bind=bind_key)
-                if engine:
-                    url = str(engine.url)
-                    if url.startswith('sqlite:///'):
-                        db_path = url.replace('sqlite:///', '', 1)
-                        # Flask的sqlite:///xxx.db会将文件放在instance文件夹中
-                        if not os.path.isabs(db_path):
-                            # 获取Flask应用的instance_path
-                            instance_path = current_app.instance_path if hasattr(current_app, 'instance_path') else None
-                            if instance_path:
-                                db_path = os.path.join(instance_path, db_path)
-                            else:
-                                # 如果没有instance_path，尝试从项目根目录的instance文件夹查找
-                                current_file = os.path.abspath(__file__)
-                                project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-                                instance_dir = os.path.join(project_root, 'instance')
-                                db_path = os.path.join(instance_dir, db_path)
-                        if os.path.exists(db_path):
-                            return db_path
-            except Exception:
-                pass
-        
-        # 方法2: 从配置中获取URI并解析
-        if has_app_context() and hasattr(current_app, 'config') and 'SQLALCHEMY_BINDS' in current_app.config:
-            bind_key = 'traffic'
-            db_uri = current_app.config['SQLALCHEMY_BINDS'].get(bind_key, 'sqlite:///traffic_data.db')
-            if db_uri.startswith('sqlite:///'):
-                db_filename = db_uri.replace('sqlite:///', '', 1)
-                # Flask默认将数据库文件放在instance文件夹中
-                instance_path = current_app.instance_path if hasattr(current_app, 'instance_path') else None
-                if instance_path:
-                    db_path = os.path.join(instance_path, db_filename)
-                else:
-                    # 如果没有instance_path，尝试从项目根目录的instance文件夹查找
-                    current_file = os.path.abspath(__file__)
-                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-                    instance_dir = os.path.join(project_root, 'instance')
-                    db_path = os.path.join(instance_dir, db_filename)
-                if os.path.exists(db_path):
-                    return db_path
-        
-        # 方法3: 默认路径 - instance/traffic_data.db
-        current_file = os.path.abspath(__file__)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-        instance_path = os.path.join(project_root, 'instance', 'traffic_data.db')
-        if os.path.exists(instance_path):
-            return instance_path
-        
-        # 方法4: 尝试项目根目录（向后兼容）
-        root_path = os.path.join(project_root, 'traffic_data.db')
-        if os.path.exists(root_path):
-            return root_path
-        
-        # 如果都不存在，返回instance路径（即使文件不存在）
-        return instance_path
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        # 如果无法获取，使用默认路径
-        current_file = os.path.abspath(__file__)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-        return os.path.join(project_root, 'instance', 'traffic_data.db')
 
 
 def get_database_stats():
@@ -1282,11 +1210,30 @@ def get_database_stats():
         device_count = Device.query.count()
         device_traffic_records = DeviceTraffic.query.count()
         
-        # 获取数据库文件大小
-        db_path = get_database_file_path()
+        # MySQL数据库大小需要通过查询information_schema获取
         db_size = 0
-        if db_path and os.path.exists(db_path):
-            db_size = os.path.getsize(db_path)
+        try:
+            database_config = get_database_config()
+            # 所有表都在mysql_database数据库中（bind_key只是SQLAlchemy的概念）
+            mysql_database = database_config.get('mysql_database', 'bandix_monitor')
+            
+            # 查询MySQL数据库大小（单位：字节）
+            query = text("""
+                SELECT ROUND(SUM(data_length + index_length), 0) AS db_size
+                FROM information_schema.tables 
+                WHERE table_schema = :db_name
+            """)
+            result = db.session.execute(query, {'db_name': mysql_database}).fetchone()
+            if result and result[0] is not None:
+                # 处理Decimal类型，转换为int
+                size_value = result[0]
+                if hasattr(size_value, '__int__'):
+                    db_size = int(size_value)
+                else:
+                    db_size = int(float(size_value))
+        except Exception as e:
+            # 如果查询失败，保持db_size为0（不打印错误，避免日志过多）
+            db_size = 0
         
         # 获取最早和最晚的记录时间
         earliest_total = TotalTraffic.query.order_by(TotalTraffic.timestamp.asc()).first()
@@ -1384,27 +1331,15 @@ def cleanup_old_data(keep_days=None, start_time=None, end_time=None):
 
 def export_database_backup():
     """
-    导出数据库为SQL格式
+    导出数据库为SQL格式（MySQL）
     
     Returns:
         str: SQL文件内容
     """
     try:
-        db_path = get_database_file_path()
-        if not os.path.exists(db_path):
-            raise FileNotFoundError(f"数据库文件不存在: {db_path}")
-        
-        # 使用sqlite3导出SQL
-        conn = sqlite3.connect(db_path)
-        sql_dump = []
-        
-        # 导出所有表的数据
-        for line in conn.iterdump():
-            sql_dump.append(line)
-        
-        conn.close()
-        
-        return '\n'.join(sql_dump)
+        # MySQL备份需要使用mysqldump或通过SQLAlchemy查询
+        # 这里返回一个提示信息，实际备份应通过备份服务进行
+        raise NotImplementedError("MySQL数据库备份应使用备份服务或mysqldump工具")
     except Exception as e:
         raise e
 

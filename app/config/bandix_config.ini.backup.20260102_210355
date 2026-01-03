@@ -1,0 +1,91 @@
+[bandix]
+url = http://10.0.0.1/ubus
+username = root
+password = @HanBo123
+
+[api]
+host = 0.0.0.0
+port = 5000
+debug = false
+auth_enabled = true
+api_key = hanbo123
+health_check_require_auth = false
+
+[collector]
+collect_interval = 1
+
+[notifications]
+email_enabled = true
+email_smtp_host = smtp.qq.com
+email_smtp_port = 465
+email_use_tls = true
+email_username = 2889264408@qq.com
+email_password = kpmkkqnzovxndfef
+email_from = 2889264408@qq.com
+email_to = ishan.bo@outlook.com
+webhook_enabled = false
+webhook_urls = https://example.com/webhook1;https://example.com/webhook2
+webhook_headers = {"Authorization": "Bearer token"}
+telegram_enabled = false
+telegram_bot_token = your-bot-token
+telegram_chat_ids = 123456789;987654321
+wecom_enabled = true
+wecom_webhook_urls = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d2e70282-8bd1-4e72-8872-c6ba45aa5902
+dingtalk_enabled = false
+dingtalk_webhook_urls = https://oapi.dingtalk.com/robot/send?access_token=xxx
+
+[backup]
+backup_enabled = true
+frequency = daily
+backup_time = 02:00
+backup_dir = ./backups
+databases = users,traffic  # 要备份的数据库，用逗号分隔
+keep_count = 30  # 保留最近N个备份
+compress = false
+cloud_enabled = false
+cloud_type = s3
+cloud_bucket = your-bucket-name
+cloud_region = us-east-1  # AWS S3 区域
+cloud_access_key = your-access-key
+cloud_secret_key = your-secret-key
+cloud_endpoint = oss-cn-hangzhou.aliyuncs.com
+
+[report]
+report_enabled = true
+daily_enabled = true
+daily_time = 02:00
+weekly_enabled = true
+weekly_time = 02:00
+weekly_day = monday
+monthly_enabled = true
+monthly_time = 02:00
+monthly_day = 1
+report_dir = ./reports
+keep_count = 30  # 保留最近N个报表
+generate_pdf = true
+generate_html = true
+generate_excel = true
+pdf_library = reportlab
+email_enabled = true
+email_recipients = ishan.bo@outlook.com
+
+[logging]
+# 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level = INFO
+# 日志格式: json, text, both
+log_format = both
+# 日志存储目录
+log_dir = ./logs
+# 日志文件大小限制（MB）
+log_max_bytes = 10
+# 日志文件备份数量
+log_backup_count = 30
+# 日志滚动策略: size, time, both
+log_rotation = both
+# 是否输出到控制台
+log_to_console = true
+# 是否输出到文件
+log_to_file = true
+# 日志分类: access (访问日志), error (错误日志), business (业务日志), all (全部)
+log_categories = all
+

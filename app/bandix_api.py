@@ -4,7 +4,7 @@
 OpenWrt Bandix 流量监控 API 服务
 提供 HTTP API 接口来获取监控数据
 """
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, session
 from functools import wraps
 from flasgger import Swagger
 import os
@@ -22,20 +22,94 @@ from app.api.user_api import user_bp
 from app.api.database_api import db_bp
 from app.api.alert_api import alert_bp
 from app.api.config_api import config_bp
+from app.api.backup_api import backup_bp
+from app.api.report_api import report_bp
+from app.api.log_api import log_bp
+from app.api.stats_api import stats_bp
+from app.api.mysql_api import mysql_bp
 from app.models.database_models import Device, TotalTraffic, DeviceTraffic, init_database_tables
 from app.services.data_collector import start_collector
+from app.services.notification_queue import start_workers, stop_workers
+from app.services.backup_scheduler import start_backup_scheduler, stop_backup_scheduler
+from app.models.backup_models import init_backup_db
+from app.models.report_models import init_report_db
+from app.models.api_stats_models import init_api_stats_db
+from app.services.report_scheduler import start_report_scheduler, stop_report_scheduler
+from app.services.config_manager import load_config_file
+from app.services.logger_service import init_logging
+from app.utils.logger import get_logger
+from app.services.database_config_service import get_database_uri, get_traffic_database_uri
 
 app = Flask(__name__, template_folder='templates')
 
-# 配置用户数据库
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+# 根据环境变量判断是否为生产环境
+is_production = os.getenv('FLASK_ENV', '').lower() == 'production' or \
+                os.getenv('ENVIRONMENT', '').lower() == 'production' or \
+                not os.getenv('DEBUG', 'false').lower() == 'true'
+
+# 生产环境优化配置
+if is_production:
+    # 生产环境：禁用模板自动重载，启用缓存
+    app.config['TEMPLATES_AUTO_RELOAD'] = False
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1年缓存
+    app.jinja_env.auto_reload = False
+    app.jinja_env.cache_size = 400  # 启用模板缓存
+else:
+    # 开发环境：启用模板自动重载，禁用缓存
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+    app.jinja_env.auto_reload = True
+    app.jinja_env.cache = None
+
+# 配置数据库（MySQL）
+try:
+    database_uri, _ = get_database_uri()
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
+except Exception as e:
+    # 如果配置读取失败，使用默认配置（但应该配置正确）
+    print(f"警告: 读取数据库配置失败: {e}", file=sys.stderr)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:password@localhost:3306/bandix_monitor?charset=utf8mb4'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.urandom(24)  # 用于session加密
+
+# SECRET_KEY 配置：生产环境应使用固定密钥
+secret_key = os.getenv('SECRET_KEY')
+if not secret_key:
+    # 尝试从配置文件读取
+    try:
+        from app.services.config_manager import load_config_file
+        _, api_config = load_config_file()
+        secret_key = api_config.get('secret_key')
+    except:
+        pass
+
+if not secret_key:
+    # 如果都没有，生成一个（仅用于开发环境）
+    if not is_production:
+        secret_key = os.urandom(24).hex()
+    else:
+        # 生产环境必须设置 SECRET_KEY
+        raise ValueError("生产环境必须设置 SECRET_KEY 环境变量或配置文件中的 secret_key")
+
+app.config['SECRET_KEY'] = secret_key
+
+# 生产环境性能优化
+if is_production:
+    app.config['JSONIFY_PRETTYPRINT_REGULAR'] = False  # 禁用 JSON 美化，提高性能
+    app.config['JSON_SORT_KEYS'] = False  # 禁用 JSON 键排序
 
 # 配置流量数据库（使用BINDS）
-if 'SQLALCHEMY_BINDS' not in app.config:
-    app.config['SQLALCHEMY_BINDS'] = {}
-app.config['SQLALCHEMY_BINDS']['traffic'] = 'sqlite:///traffic_data.db'
+try:
+    traffic_uri, traffic_bind_key = get_traffic_database_uri()
+    if 'SQLALCHEMY_BINDS' not in app.config:
+        app.config['SQLALCHEMY_BINDS'] = {}
+    app.config['SQLALCHEMY_BINDS'][traffic_bind_key] = traffic_uri
+except Exception as e:
+    # 如果配置读取失败，使用默认配置
+    print(f"警告: 读取流量数据库配置失败: {e}", file=sys.stderr)
+    if 'SQLALCHEMY_BINDS' not in app.config:
+        app.config['SQLALCHEMY_BINDS'] = {}
+    app.config['SQLALCHEMY_BINDS']['traffic'] = 'mysql+pymysql://root:password@localhost:3306/bandix_monitor?charset=utf8mb4'
 
 # 初始化数据库（只初始化一次，因为user_models和database_models共享同一个db实例）
 db.init_app(app)
@@ -44,6 +118,12 @@ init_user_db(app)
 # 初始化流量数据库表
 with app.app_context():
     init_database_tables(app, bind_key='traffic')
+    # 初始化备份数据库表
+    init_backup_db(app)
+    # 初始化报表数据库表
+    init_report_db(app)
+    # 初始化API统计数据库表
+    init_api_stats_db(app)
 
 # 注册用户管理蓝图
 app.register_blueprint(user_bp)
@@ -56,6 +136,21 @@ app.register_blueprint(alert_bp)
 
 # 注册配置管理蓝图
 app.register_blueprint(config_bp)
+
+# 注册备份管理蓝图
+app.register_blueprint(backup_bp)
+
+# 注册报表管理蓝图
+app.register_blueprint(report_bp)
+
+# 注册日志管理蓝图
+app.register_blueprint(log_bp)
+
+# 注册API统计蓝图
+app.register_blueprint(stats_bp)
+
+# 注册MySQL管理蓝图
+app.register_blueprint(mysql_bp)
 
 # 初始化Swagger API文档
 swagger_config = {
@@ -123,6 +218,14 @@ swagger_template = {
         {
             "name": "系统信息",
             "description": "系统信息和健康检查接口"
+        },
+        {
+            "name": "备份管理",
+            "description": "数据库备份管理接口"
+        },
+        {
+            "name": "报表管理",
+            "description": "报表生成和管理接口"
         }
     ],
     "schemes": ["http", "https"]
@@ -147,6 +250,7 @@ def load_api_config(config_file):
     try:
         config.read(config_file, encoding='utf-8')
     except Exception as e:
+        # 注意：这里不能使用logger，因为logger可能还未初始化
         print(f"警告: 无法读取配置文件 '{config_file}': {e}，将使用默认配置", file=sys.stderr)
         return {}, {}
     
@@ -170,18 +274,154 @@ def reload_app_config():
     # 重新加载配置文件
     bandix_config, api_config = load_api_config(CONFIG_FILE)
     
+    # 重新加载日志配置
+    try:
+        _, _, _, _, _, _, logging_config, _ = load_config_file(CONFIG_FILE)
+        if logging_config:
+            init_logging(logging_config)
+            logger.info("日志配置已重新加载")
+    except Exception as e:
+        error_logger.error(f"重新加载日志配置失败: {e}", exc_info=True)
+    
     # 如果监控器已创建，需要重新创建以应用新配置
     if monitor is not None:
         monitor = None  # 重置监控器，下次调用get_monitor()时会重新创建
     
-    print("应用配置已重新加载")
+    logger.info("应用配置已重新加载")
 
 
 # 加载配置
 bandix_config, api_config = load_api_config(CONFIG_FILE)
 
+# 初始化日志系统
+try:
+    _, _, _, _, _, _, logging_config = load_config_file(CONFIG_FILE)
+    if logging_config:
+        init_logging(logging_config)
+    else:
+        # 使用默认日志配置
+        init_logging({
+            'log_level': 'INFO',
+            'log_format': 'both',
+            'log_dir': './logs',
+            'log_max_bytes': 10,
+            'log_backup_count': 30,
+            'log_rotation': 'both',
+            'log_to_console': 'true',
+            'log_to_file': 'true',
+            'log_categories': 'all'
+        })
+except Exception as e:
+    print(f"警告: 日志系统初始化失败: {e}，将使用默认日志配置", file=sys.stderr)
+    import traceback
+    traceback.print_exc()
+    # 初始化失败时，使用默认配置再试一次
+    try:
+        init_logging({
+            'log_level': 'INFO',
+            'log_format': 'text',
+            'log_dir': './logs',
+            'log_max_bytes': 10,
+            'log_backup_count': 30,
+            'log_rotation': 'time',
+            'log_to_console': 'true',
+            'log_to_file': 'false',
+            'log_categories': 'all'
+        })
+    except:
+        pass
+
+# 获取日志记录器
+try:
+    logger = get_logger('bandix_api', category='business')
+    access_logger = get_logger('bandix_api', category='access')
+    error_logger = get_logger('bandix_api', category='error')
+except Exception as e:
+    # 如果日志系统未初始化，使用基本日志记录器
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    logger = logging.getLogger('bandix_api')
+    access_logger = logging.getLogger('bandix_api.access')
+    error_logger = logging.getLogger('bandix_api.error')
+
 # 创建监控器实例（单例模式）
 monitor = None
+
+# Flask请求日志记录中间件
+@app.before_request
+def log_request_info():
+    """记录请求信息"""
+    try:
+        if access_logger:
+            access_logger.info(
+                f"请求: {request.method} {request.path}",
+                extra={
+                    'extra_data': {
+                        'method': request.method,
+                        'path': request.path,
+                        'remote_addr': request.remote_addr,
+                        'user_agent': request.headers.get('User-Agent', ''),
+                        'query_string': request.query_string.decode('utf-8') if request.query_string else ''
+                    }
+                }
+            )
+    except:
+        pass  # 避免日志记录失败影响请求处理
+
+@app.after_request
+def log_response_info(response):
+    """记录响应信息（仅记录错误）"""
+    try:
+        # 只记录错误响应
+        if response.status_code >= 400:
+            if error_logger:
+                error_logger.error(
+                    f"错误响应: {request.method} {request.path} - {response.status_code}",
+                    extra={
+                        'extra_data': {
+                            'method': request.method,
+                            'path': request.path,
+                            'status_code': response.status_code
+                        }
+                    }
+                )
+        
+        # 记录API调用统计（仅统计/api/开头的端点）
+        if request.path.startswith('/api/'):
+            try:
+                from app.services.api_stats_service import ApiStatsService
+                from app.models.user_models import User
+                
+                # 获取用户ID（如果已登录）
+                user_id = None
+                username = None
+                if 'user_id' in session:
+                    user_id = session.get('user_id')
+                    # 尝试从session获取username，如果没有则查询数据库
+                    username = session.get('username')
+                    if not username and user_id:
+                        try:
+                            user = User.query.get(user_id)
+                            if user:
+                                username = user.username
+                        except:
+                            pass
+                
+                # 记录API调用
+                ApiStatsService.record_api_call(
+                    endpoint=request.path,
+                    method=request.method,
+                    user_id=user_id,
+                    status_code=response.status_code,
+                    username=username
+                )
+            except Exception as e:
+                # 统计记录失败不应影响主流程
+                if error_logger:
+                    error_logger.error(f"记录API统计失败: {e}", exc_info=True)
+    except:
+        pass  # 避免日志记录失败影响响应
+    return response
 
 
 def check_auth():
@@ -488,11 +728,13 @@ def get_monitor_data():
         data = monitor_instance.get_monitor_data()
         
         if data is None:
+            # 登录失败或无法获取数据，返回503（服务不可用）而不是500（服务器错误）
+            # 这样数据收集服务可以优雅地处理，不会中断循环
             return jsonify({
                 "success": False,
                 "data": None,
-                "error": "无法获取监控数据，请检查登录信息"
-            }), 500
+                "error": "无法获取监控数据，请检查OpenWrt设备连接和登录信息"
+            }), 503
         
         return jsonify({
             "success": True,
@@ -500,6 +742,8 @@ def get_monitor_data():
             "error": None
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "success": False,
             "data": None,
@@ -573,11 +817,12 @@ def get_total_data():
         data = monitor_instance.get_monitor_data()
         
         if data is None:
+            # 登录失败或无法获取数据，返回503（服务不可用）而不是500（服务器错误）
             return jsonify({
                 "success": False,
                 "data": None,
-                "error": "无法获取监控数据，请检查登录信息"
-            }), 500
+                "error": "无法获取监控数据，请检查OpenWrt设备连接和登录信息"
+            }), 503
         
         return jsonify({
             "success": True,
@@ -585,6 +830,8 @@ def get_total_data():
             "error": None
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "success": False,
             "data": None,
@@ -662,11 +909,12 @@ def get_devices_data():
         data = monitor_instance.get_monitor_data()
         
         if data is None:
+            # 登录失败或无法获取数据，返回503（服务不可用）而不是500（服务器错误）
             return jsonify({
                 "success": False,
                 "data": None,
-                "error": "无法获取监控数据，请检查登录信息"
-            }), 500
+                "error": "无法获取监控数据，请检查OpenWrt设备连接和登录信息"
+            }), 503
         
         return jsonify({
             "success": True,
@@ -674,6 +922,8 @@ def get_devices_data():
             "error": None
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({
             "success": False,
             "data": None,
@@ -700,12 +950,90 @@ if __name__ == "__main__":
     print(f"调试模式: {'启用' if debug else '禁用'}")
     
     # 启动数据收集服务（自动启动，使用配置的API密钥）
-    print(f"启动数据收集服务（每1秒收集一次）...")
+    log_msg = "启动数据收集服务（每1秒收集一次）..."
+    if logger:
+        logger.info(log_msg)
+    else:
+        print(log_msg)
     try:
         start_collector()
-        print("数据收集服务已启动")
+        if logger:
+            logger.info("数据收集服务已启动")
+        else:
+            print("数据收集服务已启动")
     except Exception as e:
-        print(f"警告: 数据收集服务启动失败: {e}", file=sys.stderr)
+        if error_logger:
+            error_logger.error(f"数据收集服务启动失败: {e}", exc_info=True)
+        else:
+            print(f"警告: 数据收集服务启动失败: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
     
-    app.run(host=host, port=port, debug=debug)
+    # 启动通知任务队列工作线程
+    log_msg = "启动通知任务队列..."
+    if logger:
+        logger.info(log_msg)
+    else:
+        print(log_msg)
+    try:
+        start_workers(app, num_workers=4)
+        if logger:
+            logger.info("通知任务队列已启动")
+        else:
+            print("通知任务队列已启动")
+    except Exception as e:
+        if error_logger:
+            error_logger.error(f"通知任务队列启动失败: {e}", exc_info=True)
+        else:
+            print(f"警告: 通知任务队列启动失败: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+    
+    # 启动备份调度器
+    log_msg = "启动备份调度器..."
+    if logger:
+        logger.info(log_msg)
+    else:
+        print(log_msg)
+    try:
+        start_backup_scheduler(app)
+        if logger:
+            logger.info("备份调度器已启动")
+        else:
+            print("备份调度器已启动")
+    except Exception as e:
+        if error_logger:
+            error_logger.error(f"备份调度器启动失败: {e}", exc_info=True)
+        else:
+            print(f"警告: 备份调度器启动失败: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+    
+    # 启动报表调度器
+    log_msg = "启动报表调度器..."
+    if logger:
+        logger.info(log_msg)
+    else:
+        print(log_msg)
+    try:
+        start_report_scheduler(app)
+        if logger:
+            logger.info("报表调度器已启动")
+        else:
+            print("报表调度器已启动")
+    except Exception as e:
+        if error_logger:
+            error_logger.error(f"报表调度器启动失败: {e}", exc_info=True)
+        else:
+            print(f"警告: 报表调度器启动失败: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+    
+    try:
+        app.run(host=host, port=port, debug=debug)
+    finally:
+        # 确保在应用关闭时停止工作线程和调度器
+        stop_workers()
+        stop_backup_scheduler()
+        stop_report_scheduler()
 

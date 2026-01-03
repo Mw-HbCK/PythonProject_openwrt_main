@@ -99,6 +99,25 @@ def check_traffic_threshold_alerts(app):
                     
                     print(f"[告警检查] 触发流量阈值告警: {message}")
                     
+                    # 发送通知（异步）
+                    try:
+                        import json
+                        notification_methods = []
+                        if rule.notification_methods:
+                            try:
+                                notification_methods = json.loads(rule.notification_methods)
+                            except (json.JSONDecodeError, TypeError):
+                                notification_methods = ['page']
+                        else:
+                            notification_methods = ['page']
+                        
+                        # 调用异步通知队列发送通知
+                        from app.services.notification_queue import send_notification_async
+                        send_notification_async(alert.id, notification_methods)
+                    except Exception as e:
+                        # 通知发送失败不应影响告警记录的创建
+                        print(f"[告警检查] 发送通知失败: {e}", file=sys.stderr)
+                    
             except Exception as e:
                 print(f"[告警检查] 检查规则 {rule.id} 时出错: {e}", file=sys.stderr)
                 import traceback
@@ -185,6 +204,25 @@ def check_device_offline_alerts(app):
                         db.session.commit()
                         
                         print(f"[告警检查] 触发设备离线告警: {message}")
+                        
+                        # 发送通知（异步）
+                        try:
+                            import json
+                            notification_methods = []
+                            if rule.notification_methods:
+                                try:
+                                    notification_methods = json.loads(rule.notification_methods)
+                                except (json.JSONDecodeError, TypeError):
+                                    notification_methods = ['page']
+                            else:
+                                notification_methods = ['page']
+                            
+                            # 调用异步通知队列发送通知
+                            from app.services.notification_queue import send_notification_async
+                            send_notification_async(alert.id, notification_methods)
+                        except Exception as e:
+                            # 通知发送失败不应影响告警记录的创建
+                            print(f"[告警检查] 发送通知失败: {e}", file=sys.stderr)
                         
             except Exception as e:
                 print(f"[告警检查] 检查规则 {rule.id} 时出错: {e}", file=sys.stderr)

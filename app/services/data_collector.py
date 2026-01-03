@@ -18,13 +18,31 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from app.models.database_models import db, Device, TotalTraffic, DeviceTraffic, init_database_tables
+from app.utils.logger import get_logger
+from app.services.database_config_service import get_database_uri, get_traffic_database_uri
 
 # 创建Flask应用（仅用于数据库操作）
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///traffic_data.db'
-app.config['SQLALCHEMY_BINDS'] = {
-    'traffic': 'sqlite:///traffic_data.db'
-}
+
+# 配置数据库（MySQL）
+try:
+    database_uri, _ = get_database_uri()
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
+except Exception as e:
+    print(f"警告: 读取数据库配置失败: {e}，使用默认配置", file=sys.stderr)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:password@localhost:3306/bandix_monitor?charset=utf8mb4'
+
+try:
+    traffic_uri, traffic_bind_key = get_traffic_database_uri()
+    app.config['SQLALCHEMY_BINDS'] = {
+        traffic_bind_key: traffic_uri
+    }
+except Exception as e:
+    print(f"警告: 读取流量数据库配置失败: {e}，使用默认配置", file=sys.stderr)
+    app.config['SQLALCHEMY_BINDS'] = {
+        'traffic': 'mysql+pymysql://root:password@localhost:3306/bandix_monitor?charset=utf8mb4'
+    }
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 初始化数据库
@@ -37,6 +55,10 @@ API_TOKEN = os.getenv("API_TOKEN", "")  # 优先使用环境变量
 COLLECT_INTERVAL = float(os.getenv("COLLECT_INTERVAL", "1.0"))  # 秒
 IS_RUNNING = False
 COLLECTOR_THREAD = None
+
+# 获取日志记录器
+logger = get_logger('data_collector', category='business')
+error_logger = get_logger('data_collector', category='error')
 
 
 def load_collect_interval_from_config():
@@ -71,7 +93,10 @@ def load_collect_interval_from_config():
                     COLLECT_INTERVAL = float(config["collector"].get("collect_interval"))
                     return COLLECT_INTERVAL
     except Exception as e:
-        print(f"[数据收集服务] 读取收集间隔配置失败: {e}，使用默认值1.0秒", file=sys.stderr)
+        if error_logger:
+            error_logger.error(f"读取收集间隔配置失败: {e}，使用默认值1.0秒")
+        else:
+            print(f"[数据收集服务] 读取收集间隔配置失败: {e}，使用默认值1.0秒", file=sys.stderr)
     
     return COLLECT_INTERVAL
 
@@ -82,7 +107,10 @@ def reload_collector_config():
     """
     global COLLECT_INTERVAL
     load_collect_interval_from_config()
-    print(f"[数据收集服务] 配置已重新加载，收集间隔: {COLLECT_INTERVAL}秒")
+    if logger:
+        logger.info(f"配置已重新加载，收集间隔: {COLLECT_INTERVAL}秒")
+    else:
+        print(f"[数据收集服务] 配置已重新加载，收集间隔: {COLLECT_INTERVAL}秒")
 
 
 def load_api_token_from_config():
@@ -116,7 +144,10 @@ def load_api_token_from_config():
                     API_TOKEN = config["api"].get("api_key").strip()
                     return API_TOKEN
     except Exception as e:
-        print(f"[数据收集服务] 读取配置文件失败: {e}", file=sys.stderr)
+        if error_logger:
+            error_logger.error(f"读取配置文件失败: {e}")
+        else:
+            print(f"[数据收集服务] 读取配置文件失败: {e}", file=sys.stderr)
     
     return None
 
@@ -202,7 +233,10 @@ def save_traffic_data(data):
                 check_alerts(app)
             except Exception as e:
                 # 告警检查失败不应该影响数据收集
-                print(f"[数据收集服务] 告警检查失败: {e}", file=sys.stderr)
+                if error_logger:
+                    error_logger.error(f"告警检查失败: {e}", exc_info=True)
+                else:
+                    print(f"[数据收集服务] 告警检查失败: {e}", file=sys.stderr)
                 import traceback
                 traceback.print_exc()
             
@@ -210,7 +244,10 @@ def save_traffic_data(data):
             
         except Exception as e:
             db.session.rollback()
-            print(f"保存数据失败: {e}", file=sys.stderr)
+            if error_logger:
+                error_logger.error(f"保存数据失败: {e}", exc_info=True)
+            else:
+                print(f"保存数据失败: {e}", file=sys.stderr)
             import traceback
             traceback.print_exc()
             return False
@@ -238,19 +275,51 @@ def collect_data_once():
             result = response.json()
             if result.get("success") and result.get("data"):
                 if save_traffic_data(result["data"]):
-                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 数据收集成功")
+                    if logger:
+                        logger.debug("数据收集成功")
+                    else:
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 数据收集成功")
                 else:
-                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 数据保存失败", file=sys.stderr)
+                    if error_logger:
+                        error_logger.error("数据保存失败")
+                    else:
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 数据保存失败", file=sys.stderr)
             else:
                 error_msg = result.get("error", "未知错误")
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] API返回错误: {error_msg}", file=sys.stderr)
+                if error_logger:
+                    error_logger.warning(f"API返回错误: {error_msg}")
+                else:
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] API返回错误: {error_msg}", file=sys.stderr)
+        elif response.status_code == 503:
+            # 503 Service Unavailable - 设备不可用或登录失败，这是可预期的错误
+            # 不打印错误信息，避免控制台刷屏（只在debug模式下打印）
+            try:
+                result = response.json()
+                error_msg = result.get("error", "设备不可用")
+            except:
+                error_msg = "设备不可用"
+            # 只在debug模式下打印
+            if os.getenv("DEBUG", "").lower() == "true":
+                if error_logger:
+                    error_logger.debug(f"设备不可用: {error_msg}")
+                else:
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 设备不可用: {error_msg}", file=sys.stderr)
         else:
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] API请求失败: HTTP {response.status_code}", file=sys.stderr)
+            if error_logger:
+                error_logger.warning(f"API请求失败: HTTP {response.status_code}")
+            else:
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] API请求失败: HTTP {response.status_code}", file=sys.stderr)
             
     except requests.exceptions.RequestException as e:
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 网络错误: {e}", file=sys.stderr)
+        if error_logger:
+            error_logger.error(f"网络错误: {e}", exc_info=True)
+        else:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 网络错误: {e}", file=sys.stderr)
     except Exception as e:
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 收集数据时发生错误: {e}", file=sys.stderr)
+        if error_logger:
+            error_logger.error(f"收集数据时发生错误: {e}", exc_info=True)
+        else:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 收集数据时发生错误: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
 
@@ -268,10 +337,16 @@ def collector_loop():
     # 确保收集间隔已加载
     load_collect_interval_from_config()
     
-    print(f"数据收集服务已启动，每 {COLLECT_INTERVAL} 秒收集一次数据")
-    print(f"API地址: {API_BASE_URL}")
-    print(f"API密钥: {'已配置' if api_token else '未配置（可能导致认证失败）'}")
-    print(f"数据库: traffic_data.db")
+    if logger:
+        logger.info(f"数据收集服务已启动，每 {COLLECT_INTERVAL} 秒收集一次数据")
+        logger.info(f"API地址: {API_BASE_URL}")
+        logger.info(f"API密钥: {'已配置' if api_token else '未配置（可能导致认证失败）'}")
+        logger.info(f"数据库: traffic_data.db")
+    else:
+        print(f"数据收集服务已启动，每 {COLLECT_INTERVAL} 秒收集一次数据")
+        print(f"API地址: {API_BASE_URL}")
+        print(f"API密钥: {'已配置' if api_token else '未配置（可能导致认证失败）'}")
+        print(f"数据库: traffic_data.db")
     
     while IS_RUNNING:
         try:
@@ -282,10 +357,16 @@ def collector_loop():
         except KeyboardInterrupt:
             break
         except Exception as e:
-            print(f"收集循环错误: {e}", file=sys.stderr)
+            if error_logger:
+                error_logger.error(f"收集循环错误: {e}", exc_info=True)
+            else:
+                print(f"收集循环错误: {e}", file=sys.stderr)
             time.sleep(COLLECT_INTERVAL)
     
-    print("数据收集服务已停止")
+    if logger:
+        logger.info("数据收集服务已停止")
+    else:
+        print("数据收集服务已停止")
 
 
 def start_collector():
@@ -295,7 +376,10 @@ def start_collector():
     global COLLECTOR_THREAD, IS_RUNNING
     
     if IS_RUNNING:
-        print("数据收集服务已在运行", file=sys.stderr)
+        if error_logger:
+            error_logger.warning("数据收集服务已在运行")
+        else:
+            print("数据收集服务已在运行", file=sys.stderr)
         return False
     
     # 重置运行状态（防止之前的状态影响）
@@ -334,7 +418,13 @@ if __name__ == "__main__":
     try:
         collector_loop()
     except KeyboardInterrupt:
-        print("\n正在停止数据收集服务...")
+        if logger:
+            logger.info("\n正在停止数据收集服务...")
+        else:
+            print("\n正在停止数据收集服务...")
         stop_collector()
-        print("数据收集服务已停止")
+        if logger:
+            logger.info("数据收集服务已停止")
+        else:
+            print("数据收集服务已停止")
 

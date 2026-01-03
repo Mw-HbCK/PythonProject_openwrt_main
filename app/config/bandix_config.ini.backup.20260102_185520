@@ -1,0 +1,80 @@
+[bandix]
+url = http://10.0.0.1/ubus
+username = root
+password = @HanBo123
+
+[api]
+host = 0.0.0.0
+port = 5000
+debug = false
+auth_enabled = true
+api_key = hanbo123
+health_check_require_auth = false
+
+[collector]
+collect_interval = 1
+
+[notifications]
+email_enabled = false
+email_smtp_host = smtp.example.com
+email_smtp_port = 587
+email_use_tls = true
+email_username = your-email@example.com
+email_password = your-password
+email_from = alerts@example.com
+email_to = admin@example.com
+webhook_enabled = false
+webhook_urls = https://example.com/webhook1;https://example.com/webhook2
+webhook_headers = {"Authorization": "Bearer token"}
+telegram_enabled = false
+telegram_bot_token = your-bot-token
+telegram_chat_ids = 123456789;987654321
+wecom_enabled = true
+wecom_webhook_urls = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d2e70282-8bd1-4e72-8872-c6ba45aa5902
+dingtalk_enabled = false
+dingtalk_webhook_urls = https://oapi.dingtalk.com/robot/send?access_token=xxx
+
+[backup]
+backup_enabled = true
+frequency = daily
+backup_time = 02:00
+backup_dir = ./backups
+databases = users,traffic  # 要备份的数据库，用逗号分隔
+keep_count = 30  # 保留最近N个备份
+compress = false
+cloud_enabled = false
+cloud_type = 
+cloud_bucket = your-bucket-name
+cloud_region = us-east-1  # AWS S3 区域
+cloud_access_key = your-access-key
+cloud_secret_key = your-secret-key
+cloud_endpoint = oss-cn-hangzhou.aliyuncs.com
+
+[report]
+# 报表生成配置
+report_enabled = false
+daily_enabled = true
+daily_time = 02:00
+weekly_enabled = true
+weekly_time = 02:00
+weekly_day = monday
+monthly_enabled = true
+monthly_time = 02:00
+monthly_day = 1
+
+# 报表存储配置
+report_dir = ./reports
+keep_count = 30  # 保留最近N个报表
+
+# 报表格式配置
+generate_pdf = true
+generate_html = true
+generate_excel = true
+
+# PDF生成库选择（reportlab/weasyprint/both）
+pdf_library = reportlab
+
+# 邮件发送配置
+email_enabled = false
+email_recipients = admin@example.com
+

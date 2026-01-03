@@ -3,4 +3,14 @@ flask>=2.3.0
 flask-sqlalchemy>=3.0.0
 werkzeug>=2.3.0
 flasgger>=0.9.7
+python-telegram-bot>=20.0
+schedule>=1.2.0
+boto3>=1.28.0
+oss2>=2.18.0
+reportlab>=4.0.0
+matplotlib>=3.7.0
+openpyxl>=3.1.0
+Pillow>=10.0.0
+pymysql>=1.1.0
+# weasyprint>=60.0  # 可选，需要系统依赖（cairo、pango等），安装较复杂
 
