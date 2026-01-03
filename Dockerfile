@@ -33,16 +33,17 @@ RUN pip install --upgrade pip setuptools wheel && \
 COPY . .
 
 # 复制并设置入口脚本权限
-COPY docker-entrypoint.sh /app/
-RUN chmod +x /app/docker-entrypoint.sh
-
-# 创建必要的目录
-RUN mkdir -p /app/logs /app/backups /app/reports /app/instance && \
-    chmod -R 755 /app/logs /app/backups /app/reports /app/instance
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh && \
+    chown bandix:bandix /app/docker-entrypoint.sh
 
 # 创建非 root 用户
-RUN useradd -m -u 1000 bandix && \
-    chown -R bandix:bandix /app
+RUN useradd -m -u 1000 bandix
+
+# 创建必要的目录并设置权限
+RUN mkdir -p /app/logs /app/backups /app/reports /app/instance && \
+    chown -R bandix:bandix /app && \
+    chmod -R 755 /app/logs /app/backups /app/reports /app/instance
 
 # 切换到非 root 用户
 USER bandix

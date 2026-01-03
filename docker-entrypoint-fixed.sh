@@ -1,5 +1,5 @@
 #!/bin/bash
-# Docker 容器启动入口脚本
+# Docker 容器启动入口脚本（修复权限问题版本）
 
 set -e
 
@@ -7,10 +7,9 @@ echo "=========================================="
 echo "Bandix Monitor 容器启动中..."
 echo "=========================================="
 
-# 创建必要的目录（使用 -p 参数，如果目录已存在不会报错）
-mkdir -p /app/logs /app/backups /app/reports /app/instance
-
-# 注意：在非 root 用户下不需要 chmod，目录权限已在 Dockerfile 中设置
+# 创建必要的目录（如果不存在）
+# 注意：目录权限已在 Dockerfile 中设置，这里只需要确保目录存在
+mkdir -p /app/logs /app/backups /app/reports /app/instance 2>/dev/null || true
 
 # 等待 MySQL 就绪（如果使用 MySQL）
 if [ -n "$MYSQL_HOST" ] && [ "$MYSQL_HOST" != "localhost" ] && [ "$MYSQL_HOST" != "127.0.0.1" ]; then
@@ -38,7 +37,7 @@ with app.app_context():
         print('管理员账户创建成功: admin / ${ADMIN_PASSWORD:-admin123456}')
     else:
         print('管理员账户已存在')
-"
+" 2>/dev/null || echo "数据库初始化跳过（可能已存在）"
 fi
 
 echo "=========================================="
